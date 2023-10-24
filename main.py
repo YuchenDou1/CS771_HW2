@@ -1,22 +1,36 @@
+# code modified from pytorch imagenet example
+
+# python imports
 import argparse
 import os
 import datetime
 import time
 import math
 import random
+
+# numpy imports
 import numpy as np
+
+# torch imports
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
+
+# pretrained models
 import torchvision
+
+# for visualization
 from torch.utils.tensorboard import SummaryWriter
 
+# our code
 import custom_transforms as transforms
 from custom_dataloader import MiniPlacesLoader
 from utils import AverageMeter, LinearWarmupCosineAnnealingLR
 
+# all your code goes into student_code.py
+# part I and II
 from student_code import (
     CustomConv2d,
     default_cnn_model,
@@ -24,7 +38,11 @@ from student_code import (
     get_train_transforms,
     get_val_transforms,
 )
+
+# part III
 from student_code import default_attack, default_attention, default_visfunction
+
+# the arg parser
 parser = argparse.ArgumentParser(description="PyTorch Image Classification")
 parser.add_argument("data_folder", metavar="DIR", help="path to dataset")
 parser.add_argument(
@@ -117,7 +135,9 @@ parser.add_argument(
 parser.add_argument("--gpu", default=0, type=int, help="GPU ID to use.")
 
 
+# main function for training and testing
 def main(args):
+    # parse args
     best_acc1 = 0.0
 
     if args.gpu >= 0:
@@ -129,10 +149,13 @@ def main(args):
             "You will NOT be able to switch between CPU and GPU training!",
         )
 
+    # fix the random seeds (the best we can)
     fixed_random_seed = 2022
     torch.manual_seed(fixed_random_seed)
     np.random.seed(fixed_random_seed)
     random.seed(fixed_random_seed)
+
+    # set up the model + loss
     if args.use_custom_conv:
         print("Using custom convolutions in the network")
         model = default_cnn_model(conv_op=CustomConv2d, num_classes=100)
@@ -145,9 +168,12 @@ def main(args):
         model = default_cnn_model(num_classes=100)
     model_arch = "simplenet"
     criterion = nn.CrossEntropyLoss()
+    # put everthing to gpu
     if args.gpu >= 0:
         model = model.cuda(args.gpu)
         criterion = criterion.cuda(args.gpu)
+
+    # setup the optimizer
     if not args.use_vit:
         optimizer = torch.optim.SGD(
             model.parameters(),
@@ -161,6 +187,8 @@ def main(args):
             args.lr,
             weight_decay=args.weight_decay,
         )
+
+    # resume from a checkpoint?
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -172,6 +200,7 @@ def main(args):
                 model = model.cpu()
             else:
                 model = model.cuda(args.gpu)
+            # only load the optimizer if necessary
             if (not args.evaluate) and (not args.attack):
                 optimizer.load_state_dict(checkpoint["optimizer"])
             print(
@@ -186,10 +215,14 @@ def main(args):
 
     else:
         log_folder = "exp_" + str(datetime.datetime.fromtimestamp(int(time.time())))
+
+    # tensorboard writer
     log_folder = os.path.join("../logs", log_folder)
     writer = SummaryWriter(log_folder)
     model_folder = os.path.join(log_folder, 'models')
     os.makedirs(model_folder, exist_ok=True)
+
+    # set up transforms for data augmentation
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
@@ -199,6 +232,8 @@ def main(args):
     if (not args.evaluate) and (not args.attack):
         print("Training time data augmentations:")
         print(train_transforms)
+
+    # setup dataset and dataloader
     train_dataset = MiniPlacesLoader(
         args.data_folder, split="train", transforms=train_transforms
     )
@@ -224,18 +259,26 @@ def main(args):
         sampler=None,
         drop_last=False,
     )
+
+    # testing only
     if (args.evaluate == args.attack) and args.evaluate:
         print("Cann't set evaluate and attack to True at the same time!")
         return
+
+    # set up visualizer
     if args.vis:
         visualizer = default_attention(criterion)
     else:
         visualizer = None
+
+    # evaluation
     if args.resume and args.evaluate:
         print("Testing the model ...")
         cudnn.deterministic = True
         validate(val_loader, model, -1, args, writer, visualizer=visualizer)
         return
+
+    # attack
     if args.resume and args.attack:
         print("Generating adversarial samples for the model ..")
         cudnn.deterministic = True
@@ -249,13 +292,20 @@ def main(args):
             visualizer=visualizer,
         )
         return
+
+    # enable cudnn benchmark
     cudnn.enabled = True
     cudnn.benchmark = True
+
+    # setup learning rate scheduler
     scheduler = LinearWarmupCosineAnnealingLR(
         optimizer, args.warmup * len(train_loader), args.epochs * len(train_loader)
     )
+
+    # start the training
     print("Training the model ...")
     for epoch in range(args.start_epoch, args.epochs):
+        # train for one epoch
         train(
             train_loader,
             model,
@@ -266,6 +316,8 @@ def main(args):
             args,
             writer
         )
+
+        # evaluate on validation set
         acc1 = validate(
             val_loader,
             model,
@@ -273,6 +325,8 @@ def main(args):
             args,
             writer
         )
+
+        # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
         save_checkpoint(
@@ -303,38 +357,59 @@ def save_checkpoint(
 
 def train(train_loader, model, criterion, optimizer, scheduler, epoch, args, writer):
     """Training the model"""
+    # adjust the learning rate
     num_iters = len(train_loader)
+
+    # set up meters
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+
+    # switch to train mode
     model.train()
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
+        # measure data loading time
         data_time.update(time.time() - end)
+        # zero grad
         optimizer.zero_grad()
+
+        # data -> GPU
         if args.gpu >= 0:
             input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
+
+        # compute output
         output = model(input)
         loss = criterion(output, target)
+
+        # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(acc1.item(), input.size(0))
         top5.update(acc5.item(), input.size(0))
+
+        # compute gradient and do one SGD step
         loss.backward()
+        # clip the grads to stablize training (for ViT)
         if args.use_vit and (args.clip_grad > 0.0):
             torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
                 args.clip_grad
             )
         optimizer.step()
+        # step the learning rate
         scheduler.step()
+
+        # measure elapsed time
         torch.cuda.synchronize()
         batch_time.update(time.time() - end)
         end = time.time()
+
+        # printing
         if i % args.print_freq == 0:
             print(
                 "Epoch: [{0}][{1}/{2}]\t"
@@ -353,15 +428,20 @@ def train(train_loader, model, criterion, optimizer, scheduler, epoch, args, wri
                     top5=top5,
                 )
             )
+            # log loss / lr
             writer.add_scalar("data/training_loss", losses.val, epoch * num_iters + i)
             writer.add_scalar(
                 "data/learning_rate", scheduler.get_last_lr()[0], epoch * num_iters + i
             )
+
+    # print the learning rate
     print(
         "[Training]: Epoch {:d} finished with lr={:f}".format(
             epoch + 1, scheduler.get_last_lr()[0]
         )
     )
+
+    # log top-1/5 acc
     writer.add_scalars("data/top1_accuracy", {"train": top1.avg}, epoch + 1)
     writer.add_scalars("data/top5_accuracy", {"train": top5.avg}, epoch + 1)
 
@@ -371,29 +451,47 @@ def validate(val_loader, model, epoch, args, writer, attacker=None, visualizer=N
     batch_time = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+
+    # switch to evaluate mode (autograd will still track the graph!)
     model.eval()
+
+    # disable/enable gradients
     grad_flag = (attacker is not None) or (visualizer is not None)
     with torch.set_grad_enabled(grad_flag):
         end = time.time()
+        # loop over validation set
         for i, (input, target) in enumerate(val_loader):
             if args.gpu >= 0:
                 input = input.cuda(args.gpu, non_blocking=False)
                 target = target.cuda(args.gpu, non_blocking=False)
+
+            # generate adversarial samples
             if attacker is not None:
+                # generate adversarial samples
                 adv_input = attacker.perturb(model, input)
+                # forward the model
                 output = model(adv_input)
             else:
+                # forward the model
                 output = model(input)
+
+            # test time augmentation (minor performance boost)
             if args.evaluate:
                 flipped_input = torch.flip(input, (3,))
                 flipped_output = model(flipped_input)
                 output = 0.5 * (output + flipped_output)
+
+            # measure accuracy and record loss
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             top1.update(acc1.item(), input.size(0))
             top5.update(acc5.item(), input.size(0))
+
+            # measure elapsed time
             torch.cuda.synchronize()
             batch_time.update(time.time() - end)
             end = time.time()
+
+            # printing
             if i % args.print_freq == 0:
                 print(
                     "Test: [{0}/{1}]\t"
@@ -403,6 +501,8 @@ def validate(val_loader, model, epoch, args, writer, attacker=None, visualizer=N
                         i, len(val_loader), batch_time=batch_time, top1=top1, top5=top5
                     )
                 )
+
+                # visualize the results
                 if args.vis and args.evaluate:
                     vis_output = visualizer.explain(model, input)
                     vis_output = default_visfunction(input, vis_output=vis_output)
