@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.autograd import Function
 from torch.nn.modules.module import Module
 from torch.nn.functional import fold, unfold
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torchvision.utils import make_grid
 import math
 from utils import resize_image
@@ -64,7 +65,7 @@ class CustomConv2DFunction(Function):
             output += bias.unsqueeze(1)
         H = (ctx.input_height - kernel_size + 2 * padding) // stride + 1
         W = (ctx.input_width - kernel_size + 2 * padding) // stride + 1
-        output = output.view(input_feats.size(0), weight.size(0), H, W)
+        output = output.view(input_feats.size(0), weight.size(0), H, W).clone()
 
         #################################################################################
 
@@ -314,7 +315,26 @@ class SimpleViT(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
 
         ########################################################################
-        # Fill in the code here
+        self.patch_embed = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, padding=0)
+        self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=0.1)
+        
+        pos_ffn_dim = int(embed_dim * mlp_ratio)
+        pos_ffn = nn.Sequential(
+            nn.Linear(embed_dim, pos_ffn_dim),
+            act_layer(),
+            nn.Linear(pos_ffn_dim, embed_dim)
+        )
+
+        # Adjust the instantiation of TransformerEncoderLayer
+        encoder_layer = TransformerEncoderLayer(
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=pos_ffn_dim,
+            dropout=0.1,
+            activation=act_layer if isinstance(act_layer, str) else 'gelu'
+        )
+        self.encoder = TransformerEncoder(encoder_layer, num_layers=depth)
+        self.head = nn.Linear(embed_dim, num_classes)
         ########################################################################
         # the implementation shall start from embedding patches,
         # followed by some transformer blocks
@@ -336,10 +356,16 @@ class SimpleViT(nn.Module):
 
     def forward(self, x):
         ########################################################################
-        # Fill in the code here
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+        if self.pos_embed is not None:
+            B, N, E = x.shape
+            pos_embed_reshaped = self.pos_embed.view(1, -1, E)  # using E instead of embed_dim
+            x = x + pos_embed_reshaped
+        x = self.encoder(x)
+        x = self.head(x[:, 0])
         ########################################################################
         return x
-
 
 # change this to your model!
 default_cnn_model = SimpleNet
