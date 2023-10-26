@@ -317,7 +317,7 @@ class SimpleViT(nn.Module):
         ########################################################################
         self.patch_embed = PatchEmbed(
             in_chans = in_chans,
-            embed_dim = embed_dim
+            embed_dim = embed_dim,
             kernel_size = (patch_size, patch_size),
             stride = (patch_size, patch_size),
         )
@@ -445,7 +445,25 @@ class PGDAttack(object):
         # loop over the number of steps
         # for _ in range(self.num_steps):
         #################################################################################
-        # Fill in the code here
+        for _ in range(self.num_steps):
+            output.requires_grad = True
+            predictions = model(output)
+            _, predicted_class = predictions.max(dim=1)
+            loss = self.loss_fn(predictions, predicted_class)
+            loss.backward()
+
+            with torch.no_grad():
+                # Calculate the perturbation
+                perturbation = self.step_size * output.grad.sign()
+                # Update the adversarial example
+                output += perturbation
+                # Clip the adversarial example to be within the epsilon-ball around the original image
+                delta = torch.clamp(output - input, min=-self.epsilon, max=self.epsilon)
+                output = input + delta
+                # Ensure values are in [0, 1]
+                output = torch.clamp(output, 0, 1)
+
+            output.grad.zero_()
         #################################################################################
 
         return output
