@@ -226,6 +226,7 @@ class SimpleNet(nn.Module):
         # global avg pooling + FC
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512, num_classes)
+        self.attacker = attacker
 
     def reset_parameters(self):
         # init all params
@@ -240,7 +241,12 @@ class SimpleNet(nn.Module):
 
     def forward(self, x):
         # you can implement adversarial training here
-        # if self.training:
+        if self.training and self.attacker is not None:
+            # Generate adversarial sample based on x
+            x_adv = self.attacker.perturb(self, x)
+            # It's a common practice to mix adversarial samples with clean samples
+            # You can adjust the mixing ratio based on your needs
+            x = 0.5 * x + 0.5 * x_adv
         #   # generate adversarial sample based on x
         x = self.features(x)
         x = self.avgpool(x)
@@ -448,19 +454,15 @@ class PGDAttack(object):
         for _ in range(self.num_steps):
             output.requires_grad = True
             predictions = model(output)
-            _, predicted_class = predictions.max(dim=1)
+            _, predicted_class = predictions.min(dim=1)
             loss = self.loss_fn(predictions, predicted_class)
             loss.backward()
 
             with torch.no_grad():
-                # Calculate the perturbation
                 perturbation = self.step_size * output.grad.sign()
-                # Update the adversarial example
                 output += perturbation
-                # Clip the adversarial example to be within the epsilon-ball around the original image
                 delta = torch.clamp(output - input, min=-self.epsilon, max=self.epsilon)
                 output = input + delta
-                # Ensure values are in [0, 1]
                 output = torch.clamp(output, 0, 1)
 
             output.grad.zero_()
