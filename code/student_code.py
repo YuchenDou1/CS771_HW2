@@ -315,26 +315,30 @@ class SimpleViT(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
 
         ########################################################################
-        self.patch_embed = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, padding=0)
-        self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=0.1)
-        
-        pos_ffn_dim = int(embed_dim * mlp_ratio)
-        pos_ffn = nn.Sequential(
-            nn.Linear(embed_dim, pos_ffn_dim),
-            act_layer(),
-            nn.Linear(pos_ffn_dim, embed_dim)
+        self.patch_embed = PatchEmbed(
+            in_chans = in_chans,
+            embed_dim = embed_dim
+            kernel_size = (patch_size, patch_size),
+            stride = (patch_size, patch_size),
         )
-
-        # Adjust the instantiation of TransformerEncoderLayer
-        encoder_layer = TransformerEncoderLayer(
-            d_model=embed_dim,
-            nhead=num_heads,
-            dim_feedforward=pos_ffn_dim,
-            dropout=0.1,
-            activation=act_layer if isinstance(act_layer, str) else 'gelu'
-        )
-        self.encoder = TransformerEncoder(encoder_layer, num_layers=depth)
+        self.blocks = nn.ModuleList([
+            TransformerBlock(
+                dim=embed_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+                act_layer=act_layer,
+                window_size=window_size if i in window_block_indexes else 0
+            )
+            for i in range(depth)
+        ])
         self.head = nn.Linear(embed_dim, num_classes)
+        
+        if self.pos_embed is not None:
+            trunc_normal_(self.pos_embed, std=0.02)
+        self.apply(self._init_weights)
         ########################################################################
         # the implementation shall start from embedding patches,
         # followed by some transformer blocks
@@ -357,13 +361,15 @@ class SimpleViT(nn.Module):
     def forward(self, x):
         ########################################################################
         x = self.patch_embed(x)
-        x = x.flatten(2).transpose(1, 2)
         if self.pos_embed is not None:
-            B, N, E = x.shape
-            pos_embed_reshaped = self.pos_embed.view(1, -1, E)  # using E instead of embed_dim
-            x = x + pos_embed_reshaped
-        x = self.encoder(x)
-        x = self.head(x[:, 0])
+            x = x + self.pos_embed
+
+        for block in self.blocks:
+            x = block(x)
+            
+        x = x.mean(dim=(1, 2))
+        x = self.head(x)
+        
         ########################################################################
         return x
 
