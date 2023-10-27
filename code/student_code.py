@@ -226,7 +226,7 @@ class SimpleNet(nn.Module):
         # global avg pooling + FC
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512, num_classes)
-        self.attacker = attacker
+        self.attacker = default_attack
 
     def reset_parameters(self):
         # init all params
@@ -242,10 +242,7 @@ class SimpleNet(nn.Module):
     def forward(self, x):
         # you can implement adversarial training here
         if self.training and self.attacker is not None:
-            # Generate adversarial sample based on x
             x_adv = self.attacker.perturb(self, x)
-            # It's a common practice to mix adversarial samples with clean samples
-            # You can adjust the mixing ratio based on your needs
             x = 0.5 * x + 0.5 * x_adv
         #   # generate adversarial sample based on x
         x = self.features(x)
