@@ -462,7 +462,8 @@ class PGDAttack(object):
                 output = input + delta
                 output = torch.clamp(output, 0, 1)
 
-            output.grad.zero_()
+            if output.grad is not None:
+                output.grad.zero_()
         #################################################################################
 
         return output
