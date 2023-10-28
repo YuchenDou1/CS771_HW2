@@ -246,6 +246,7 @@ class SimpleNet(nn.Module):
             nn.Dropout(0.5),  # Adding dropout for regularization
             nn.Linear(512, num_classes)
         )
+        self.attacker = default_attack
 
     def reset_parameters(self):
         # init all params
@@ -260,7 +261,9 @@ class SimpleNet(nn.Module):
 
     def forward(self, x):
         # you can implement adversarial training here
-        # if self.training:
+        if self.training and self.attacker is not None:
+            x_adv = self.attacker.perturb(self, x)
+            x = 0.5 * x + 0.5 * x_adv
         #   # generate adversarial sample based on x
         x = self.features(x)
         x = self.avgpool(x)
@@ -337,7 +340,7 @@ class SimpleViT(nn.Module):
         ########################################################################
         self.patch_embed = PatchEmbed(
             in_chans = in_chans,
-            embed_dim = embed_dim
+            embed_dim = embed_dim,
             kernel_size = (patch_size, patch_size),
             stride = (patch_size, patch_size),
         )
@@ -465,7 +468,22 @@ class PGDAttack(object):
         # loop over the number of steps
         # for _ in range(self.num_steps):
         #################################################################################
-        # Fill in the code here
+        for _ in range(self.num_steps):
+            output.requires_grad = True
+            predictions = model(output)
+            _, predicted_class = predictions.min(dim=1)
+            loss = self.loss_fn(predictions, predicted_class)
+            loss.backward()
+
+            with torch.no_grad():
+                perturbation = self.step_size * output.grad.sign()
+                output += perturbation
+                delta = torch.clamp(output - input, min=-self.epsilon, max=self.epsilon)
+                output = input + delta
+                output = torch.clamp(output, 0, 1)
+
+            if output.grad is not None:
+                output.grad.zero_()
         #################################################################################
 
         return output
