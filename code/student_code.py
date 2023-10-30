@@ -274,7 +274,7 @@ class SimpleNet(nn.Module):
         x = self.fc(x)
         return x
 
-class SimpleNetBN(nn.Module):
+class SimpleNetBN(SimpleNet):
     # A simple CNN with batch normalization for image classification
     def __init__(self, conv_op=nn.Conv2d, num_classes=100):
         super(SimpleNetBN, self).__init__()
