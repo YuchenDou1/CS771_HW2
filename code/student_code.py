@@ -471,7 +471,7 @@ class PGDAttack(object):
         for _ in range(self.num_steps):
             output.requires_grad = True
             predictions = model(output)
-            _, predicted_class = predictions.min(dim=1)
+            _, predicted_class = predictions.max(dim=1)
             loss = self.loss_fn(predictions, predicted_class)
             loss.backward()
 
