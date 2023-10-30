@@ -261,10 +261,71 @@ class SimpleNet(nn.Module):
 
     def forward(self, x):
         # you can implement adversarial training here
-        if self.training and self.attacker is not None:
-            x_adv = self.attacker.perturb(self, x)
-            x = 0.5 * x + 0.5 * x_adv
+        # if self.training:
         #   # generate adversarial sample based on x
+        if self.training and not hasattr(self, 'is_adversarial'):
+            self.is_adversarial = True  # Set flag to indicate we are generating an adversarial sample
+            adv_x = self.attack.perturb(self, x)
+            x = adv_x
+            del self.is_adversarial
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+class SimpleNetBN(nn.Module):
+    # A simple CNN with batch normalization for image classification
+    def __init__(self, conv_op=nn.Conv2d, num_classes=100):
+        super(SimpleNetBN, self).__init__()
+
+        self.features = nn.Sequential(
+            # conv1 block: conv 7x7
+            conv_op(3, 64, kernel_size=7, stride=2, padding=3),
+            nn.BatchNorm2d(64),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            # max pooling 1/2
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            # conv2 block: simple bottleneck
+            conv_op(64, 64, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(64),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            conv_op(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            conv_op(64, 256, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(256),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            # max pooling 1/2
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            # conv3 block: simple bottleneck
+            conv_op(256, 128, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(128),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            conv_op(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+            conv_op(128, 512, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(512),  # Added BatchNorm
+            nn.ReLU(inplace=True),
+        )
+        
+        # global avg pooling + FC
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512, num_classes)
+
+    def reset_parameters(self):
+        # init all params
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0.0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1.0)
+                nn.init.constant_(m.bias, 0.0)
+
+    def forward(self, x):
         x = self.features(x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -397,7 +458,7 @@ class SimpleViT(nn.Module):
         return x
 
 # change this to your model!
-default_cnn_model = SimpleNet
+default_cnn_model = SimpleNetBN
 default_vit_model = SimpleViT
 
 # define data augmentation used for training, you can tweak things if you want
