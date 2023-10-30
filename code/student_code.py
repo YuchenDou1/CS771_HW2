@@ -480,7 +480,7 @@ class PGDAttack(object):
                 perturbation = self.step_size * output.grad.sign()
                 output = output + perturbation       # Apply perturbation
                 output = torch.clamp(output, input - self.epsilon, input + self.epsilon)  # Ensure perturbation doesn't exceed epsilon
-                #output = torch.clamp(output, 0, 1)   # Ensure image remains in [0,1]
+                output = torch.clamp(output, 0, 1)   # Ensure image remains in [0,1]
 
 
             if output.grad is not None:
