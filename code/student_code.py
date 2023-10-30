@@ -263,8 +263,8 @@ class SimpleNet(nn.Module):
         # you can implement adversarial training here
         if self.training and self.attacker is not None:
             x_adv = self.attacker.perturb(self, x)
-            #x = 0.5 * x + 0.5 * x_adv
-            x = x_adv
+            x = 0.5 * x + 0.5 * x_adv
+            #x = x_adv
         #   # generate adversarial sample based on x
         x = self.features(x)
         x = self.avgpool(x)
@@ -478,9 +478,8 @@ class PGDAttack(object):
 
             with torch.no_grad():
                 perturbation = self.step_size * output.grad.sign()
-                output = output + perturbation       # Apply perturbation
-                output = torch.clamp(output, input - self.epsilon, input + self.epsilon)  # Ensure perturbation doesn't exceed epsilon
-                output = torch.clamp(output, 0, 1)   # Ensure image remains in [0,1]
+                output = output + perturbation       # Applying perturbation
+                output = torch.clamp(output, input - self.epsilon, input + self.epsilon)  # Ensuring perturbation doesn't exceed epsilon
 
 
             if output.grad is not None:
