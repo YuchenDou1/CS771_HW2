@@ -430,7 +430,7 @@ def get_val_transforms(normalize):
 # Part III: Adversarial samples and Attention
 #################################################################################
 class PGDAttack(object):
-    def __init__(self, loss_fn, num_steps=10, step_size=0.01, epsilon=0.1):
+    def __init__(self, loss_fn, num_steps=20, step_size=0.01, epsilon=0.1):
         """
         Attack a network by Project Gradient Descent. The attacker performs
         k steps of gradient descent of step size a, while always staying
