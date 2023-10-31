@@ -445,7 +445,7 @@ class PGDAttack(object):
         """
         self.loss_fn = loss_fn
         self.num_steps = num_steps
-        self.step_size = step_size
+        self.step_size = -abs(step_size)
         self.epsilon = epsilon
 
     def perturb(self, model, input):
