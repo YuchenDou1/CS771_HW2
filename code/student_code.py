@@ -261,11 +261,10 @@ class SimpleNet(nn.Module):
 
     def forward(self, x):
         # you can implement adversarial training here
-        if self.training and not hasattr(self, 'is_adversarial'):
-            self.is_adversarial = True  # Set flag to indicate we are generating an adversarial sample
+        if self.training and self.attacker is not None:
+            
             adv_x = self.attack.perturb(self, x)
-            x = adv_x
-            del self.is_adversarial
+            x = adv_x 
         x = self.features(x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
