@@ -262,9 +262,9 @@ class SimpleNet(nn.Module):
     def forward(self, x):
         # you can implement adversarial training here
         if self.training and self.attacker is not None:
-            x_adv = self.attacker.perturb(self, x)
-            x = 0.5 * x + 0.5 * x_adv
-        #   # generate adversarial sample based on x
+            
+            adv_x = self.attack.perturb(self, x)
+            x = adv_x 
         x = self.features(x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -429,7 +429,7 @@ def get_val_transforms(normalize):
 # Part III: Adversarial samples and Attention
 #################################################################################
 class PGDAttack(object):
-    def __init__(self, loss_fn, num_steps=10, step_size=0.01, epsilon=0.1):
+    def __init__(self, loss_fn, num_steps=20, step_size=0.01, epsilon=0.1):
         """
         Attack a network by Project Gradient Descent. The attacker performs
         k steps of gradient descent of step size a, while always staying
@@ -444,7 +444,7 @@ class PGDAttack(object):
         """
         self.loss_fn = loss_fn
         self.num_steps = num_steps
-        self.step_size = step_size
+        self.step_size = -abs(step_size)
         self.epsilon = epsilon
 
     def perturb(self, model, input):
@@ -476,11 +476,10 @@ class PGDAttack(object):
             loss.backward()
 
             with torch.no_grad():
-                perturbation = self.step_size * output.grad.sign()
-                output += perturbation
-                delta = torch.clamp(output - input, min=-self.epsilon, max=self.epsilon)
-                output = input + delta
-                output = torch.clamp(output, 0, 1)
+                perturbation = -abs(self.step_size) * output.grad.sign()
+                output = output + perturbation       # Applying perturbation
+                output = torch.clamp(output, input - self.epsilon, input + self.epsilon)  # Ensuring perturbation doesn't exceed epsilon
+
 
             if output.grad is not None:
                 output.grad.zero_()
