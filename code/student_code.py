@@ -476,7 +476,7 @@ class PGDAttack(object):
             loss.backward()
 
             with torch.no_grad():
-                perturbation = self.step_size * output.grad.sign()
+                perturbation = -abs(self.step_size) * output.grad.sign()
                 output = output + perturbation       # Applying perturbation
                 output = torch.clamp(output, input - self.epsilon, input + self.epsilon)  # Ensuring perturbation doesn't exceed epsilon
 
